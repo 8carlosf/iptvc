@@ -19,6 +19,8 @@
   const RECENTER = 0.25;
   /** A timeline preview is grabbed every this many seconds of playback. */
   const THUMB_EVERY = 60;
+  /** A channel that hasn't started playing by then is given up on and checked (servers that never answer hang). */
+  const START_DEADLINE = 15_000;
   /** Controls hide after this long without pointer movement, while playing. */
   const IDLE_MS = 2500;
 </script>
@@ -44,6 +46,8 @@
   let error = $state('');
   let errorTitle = $state(''); // set when a channel's failure was diagnosed
   let dash: { destroy(): void } | null = null; // dash.js, while a DASH channel plays
+  let openedAt = Date.now(); // when the current stream was asked for
+  let started = false; // it has played at least a moment
   let reconnecting = $state(false);
   let buffering = $state(true);
   let retries = 0; // consecutive reconnects; reset once playing again
@@ -145,6 +149,8 @@
     const { signal } = abort;
     error = '';
     errorTitle = '';
+    openedAt = Date.now();
+    started = false;
     buffering = true;
     pausedLive = false;
     void decoder?.then((d) => d.close());
@@ -237,6 +243,18 @@
   });
 
   async function tick() {
+    if (!video.paused && video.readyState >= 3 && video.currentTime > 0) started = true;
+    // Never started: stop waiting on a silent server and say what's wrong.
+    if (!started && !error && !reconnecting && mode !== 'loading' && Date.now() - openedAt > START_DEADLINE) {
+      abort.abort();
+      dash?.destroy();
+      dash = null;
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      buffering = false;
+      return void explain();
+    }
     // Sound waits for picture: never let the software decoder fall behind the audio clock.
     // (Not while hidden or resyncing after it: then video is skipped on purpose and sound must play on.)
     if (soft && decoder && !document.hidden && (!video.paused || held)) {
@@ -303,7 +321,10 @@
   function retry() {
     error = '';
     errorTitle = '';
+    openedAt = Date.now();
+    started = false;
     if (mode !== 'native') return void start(from);
+    if (!video.getAttribute('src') && !dash) video.src = media.url; // dropped by the start deadline
     video.load();
     void video.play().catch(() => {});
   }

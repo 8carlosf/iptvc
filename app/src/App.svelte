@@ -44,6 +44,18 @@
   let q = $state('');
   let country = $state(''); // M3U: country filter (code), alongside the category
   let facet = $state<'cat' | 'country'>('cat'); // which filter the sidebar lists
+  let hideUnlikely = $state(localStorage.hideUnlikely === '1');
+  /** Notes that mean a channel almost certainly won't play here (free checks, from the playlist alone). */
+  const unlikely = $derived(hideUnlikely ? ['referrer', 'agent', 'geo', ...(location.protocol === 'https:' ? ['insecure'] : [])] : []);
+  /** Badges for a channel's notes; `warn`: unlikely to play. */
+  const NOTES: Record<string, { label: string; title: string; warn?: boolean }> = {
+    referrer: { label: 'Needs referrer', title: 'Needs a Referer header that browsers can’t send: unlikely to play here', warn: true },
+    agent: { label: 'TV app only', title: 'Expects a TV app’s User-Agent, which browsers can’t send: unlikely to play here', warn: true },
+    insecure: { label: 'Not secure', title: 'http:// only: blocked on https pages unless the server also offers https', warn: true },
+    geo: { label: 'Region-locked', title: 'Only plays in some countries' },
+    'part-time': { label: 'Part-time', title: 'Not on air around the clock' },
+  };
+  const shownNotes = (it: Item) => it.notes.filter((n) => n !== 'insecure' || location.protocol === 'https:');
   let items = $state<Item[]>([]);
   let total = $state(0);
 
@@ -105,7 +117,7 @@
     cat[tab] = r.cat ?? '';
     country = r.country ?? '';
     q = r.q ?? '';
-    const key = `${tab}|${cat[tab]}|${country}|${q}`;
+    const key = `${tab}|${cat[tab]}|${country}|${q}|${unlikely}`;
     if (key !== listKey) { listKey = key; search(); }
     const item = r.id !== undefined ? core.query(tab, { ids: [r.id], limit: 1 }).items[0] : undefined;
 
@@ -158,7 +170,7 @@
 
   function search(more = false) {
     if (!loaded.has(tab)) return;
-    const r = core.query(tab, { cat: q ? '' : cat[tab], country: q ? '' : country, q, offset: more ? items.length : 0, limit: PAGE });
+    const r = core.query(tab, { cat: q ? '' : cat[tab], country: q ? '' : country, exclude: unlikely, q, offset: more ? items.length : 0, limit: PAGE });
     items = more ? [...items, ...r.items] : r.items;
     total = r.total;
     if (!more) scroller?.scrollTo(0, 0);
@@ -192,9 +204,16 @@
   // category list (and no countries).
   const m3u = $derived(xt instanceof M3u);
   const catList = $derived<(Facet & { label: string })[]>(m3u
-    ? core.categories(tab, country).map((c) => ({ ...c, label: c.id }))
+    ? core.categories(tab, country, unlikely).map((c) => ({ ...c, label: c.id }))
     : (cats[tab] ?? []).map((c) => ({ id: c.category_id, count: 0, label: c.category_name })));
-  const countryList = $derived<Facet[]>(m3u ? core.countries(tab, cat[tab] ?? '') : []);
+  const countryList = $derived<Facet[]>(m3u ? core.countries(tab, cat[tab] ?? '', unlikely) : []);
+
+  function toggleUnlikely() {
+    hideUnlikely = !hideUnlikely;
+    localStorage.hideUnlikely = hideUnlikely ? '1' : '0';
+    listKey = '';
+    void apply(route);
+  }
   const regions = new Intl.DisplayNames(['en'], { type: 'region' });
   /** iptv-org writes the United Kingdom as "uk"; ISO says "GB". */
   const iso = (code: string) => (code === 'uk' ? 'GB' : code.toUpperCase());
@@ -274,6 +293,11 @@
     </header>
 
     <nav class="cats" aria-label="Filters">
+      {#if m3u}
+        <label class="toggle" title="Hides channels the playlist itself says won't play in a browser (they need headers a page can't send) or only play in some countries">
+          <input type="checkbox" checked={hideUnlikely} onchange={toggleUnlikely} /> Hide unlikely to play
+        </label>
+      {/if}
       {#if countryList.length}
         <div class="facets" role="tablist">
           <button role="tab" aria-selected={facet === 'cat'} class:on={facet === 'cat'} onclick={() => (facet = 'cat')}>Categories</button>
@@ -317,7 +341,12 @@
               <li class:on={channel?.id === it.id}>
                 <button class="row" onclick={() => open(it)} ondblclick={() => open(it, true)} title={it.name}>
                   <span class="logo">{#if it.icon}<img src={xt.image(it.icon)} alt="" loading="lazy" onerror={(e) => (e.currentTarget as HTMLImageElement).remove()} />{/if}</span>
-                  <span class="name">{it.name}</span>
+                  <span class="name">
+                    <span class="title">{it.name}</span>
+                    {#if shownNotes(it).length}
+                      <span class="notes">{#each shownNotes(it) as n}<span class="note" class:warn={NOTES[n]?.warn} title={NOTES[n]?.title}>{NOTES[n]?.label ?? n}</span>{/each}</span>
+                    {/if}
+                  </span>
                   {#if it.archive}<span class="chip" title="Catch-up: {it.archive} days"><Icon name="history" size={13} />{it.archive}d</span>{/if}
                 </button>
                 <button class="quick" onclick={() => open(it, true)} aria-label="Play {it.name}"><Icon name="play" size={15} /></button>
@@ -415,9 +444,16 @@
     border: 1px solid transparent; text-align: left; transition: background 0.15s var(--ease), border-color 0.15s var(--ease); }
   .row:hover { background: var(--surface); }
   .on .row { background: var(--surface); border-color: var(--surface-3); }
-  .logo { flex: none; display: grid; place-items: center; width: 3.75rem; height: 2.6rem; padding: 0.35rem; border-radius: 8px; background: var(--surface-2); }
-  .logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
-  .row .name { flex: 1; min-width: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Every logo the same square, never stretched: full width, centred; only a tall logo's top and bottom are cut. */
+  .logo { flex: none; width: 2.75rem; aspect-ratio: 1; display: flex; align-items: center; border-radius: 8px; overflow: hidden; background: var(--surface-2); }
+  .logo img { width: 100%; height: auto; flex: none; }
+  .row .name { flex: 1; min-width: 0; display: grid; gap: 0.2rem; }
+  .row .title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .notes { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+  .note { padding: 0 0.35rem; border-radius: 4px; font-size: 0.7rem; color: var(--faint); background: var(--surface-2); }
+  .note.warn { color: #f0b46c; background: rgb(240 180 108 / 0.12); }
+  .toggle { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem 0.7rem; font-size: 0.85rem; color: var(--muted); cursor: pointer; }
+  .toggle input { accent-color: var(--accent); }
   .chip { flex: none; display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.1rem 0.4rem; border-radius: 6px; font-size: 0.75rem;
     color: var(--muted); background: var(--surface-2); }
   .quick { position: absolute; right: 0.5rem; top: 50%; translate: 0 -50%; display: grid; place-items: center; width: 2rem; height: 2rem;

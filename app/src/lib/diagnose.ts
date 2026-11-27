@@ -12,10 +12,13 @@ function byStatus(status: number): Diagnosis {
   return { title: 'Channel unavailable', detail: `The stream answered ${status}.` };
 }
 
+/** Each check gives up after this long: a server that never answers is the likeliest failure of all. */
+const TIMEOUT = 10_000;
+
 /** Checks the stream (and, for HLS, its first variant) without downloading it. */
 export async function diagnose(url: string): Promise<Diagnosis> {
   try {
-    const r = await fetch(url);
+    const r = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) });
     if (!r.ok) return void r.body?.cancel(), byStatus(r.status);
     const playlist = /\.m3u8(\?|$)/i.test(url) || /mpegurl/i.test(r.headers.get('content-type') ?? '');
     if (!playlist) {
@@ -26,13 +29,15 @@ export async function diagnose(url: string): Promise<Diagnosis> {
         return { title: 'Channel unavailable', detail: 'Its address answered, but not with a stream.' };
       const variant = text.includes('#EXT-X-STREAM-INF') && text.split(/\r?\n/).find((l) => l.trim() && !l.startsWith('#'));
       if (variant) {
-        const v = await fetch(new URL(variant.trim(), r.url));
+        const v = await fetch(new URL(variant.trim(), r.url), { signal: AbortSignal.timeout(TIMEOUT) });
         void v.body?.cancel();
         if (!v.ok) return byStatus(v.status);
       }
     }
     return { title: 'Can’t play this stream', detail: 'The stream is reachable, but its format isn’t playable in this browser.' };
-  } catch {
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'TimeoutError')
+      return { title: 'Channel unreachable', detail: 'Its server didn’t answer within 10 seconds. It’s probably offline.' };
     return { title: 'Channel unreachable', detail: 'Its server didn’t answer, or doesn’t allow browsers to fetch it. It may be offline.' };
   }
 }

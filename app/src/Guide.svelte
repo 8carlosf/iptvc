@@ -71,8 +71,8 @@
 <style>
   section { display: flex; flex-direction: column; min-height: 0; height: 100%; }
   header { display: flex; align-items: center; gap: 0.85rem; padding: 1.25rem 1.25rem 0.75rem; }
-  .logo { flex: none; width: 3.5rem; height: 3.5rem; border-radius: 12px; background: var(--surface-2); display: grid; place-items: center; padding: 0.5rem; }
-  .logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .logo { flex: none; width: 3.5rem; aspect-ratio: 1; display: flex; align-items: center; border-radius: 12px; overflow: hidden; background: var(--surface-2); }
+  .logo img { width: 100%; height: auto; flex: none; }
   .title { flex: 1; min-width: 0; }
   h2 { font-size: 1.1rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .title p { display: flex; align-items: center; gap: 0.3rem; color: var(--muted); font-size: 0.85rem; margin-top: 0.15rem; }

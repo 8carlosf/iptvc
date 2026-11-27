@@ -29,7 +29,8 @@ export class M3u implements Provider {
   load = async () => 0; // auth already loaded the playlist
   epg = async (item: Item) => { await this.guide; return item.ext ? core.guide(item.ext) : []; };
   image = (url: string) => url;
-  live = (item: Item) => item.url;
+  // On an https page, http:// is blocked; try the same address over https (as Chrome already does for video).
+  live = (item: Item) => (location.protocol === 'https:' ? item.url.replace(/^http:/, 'https:') : item.url);
 }
 
 /** Fetches an XMLTV guide (plain or gzipped, told apart by its first bytes) into the Rust core. */
