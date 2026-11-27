@@ -35,7 +35,7 @@
   import { remux, streamSource } from './lib/remux';
   import { SoftVideo } from './lib/soft';
   import { grab, near } from './lib/thumbs';
-  import { diagnose } from './lib/diagnose';
+  import { diagnose, statusOf } from './lib/diagnose';
   import Icon from './Icon.svelte';
 
   /** `onmove`: live/catch-up position changes (the catch-up start, null at live), for the page's link. */
@@ -174,7 +174,7 @@
         return;
       }
       error = e instanceof Error ? e.message : String(e);
-      if (hls) void explain();
+      if (hls) void explain(statusOf(error));
     };
     try {
       if (stream) {
@@ -343,10 +343,10 @@
   }
 
   /** A channel failed: find out whether it's the channel (offline, refused) or the browser, and say so. */
-  async function explain() {
+  async function explain(seen?: number) {
     errorTitle = '';
     error = 'Checking the channel…';
-    const d = await diagnose(media.url);
+    const d = await diagnose(media.url, seen);
     errorTitle = d.title;
     error = d.detail;
   }

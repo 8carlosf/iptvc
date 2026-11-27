@@ -52,11 +52,17 @@ export async function probe(url: string, signal?: AbortSignal): Promise<Probe> {
 
 export type Diagnosis = { title: string; detail: string };
 
-/** A failed channel, explained. */
-export async function diagnose(url: string): Promise<Diagnosis> {
-  const { health, status } = await probe(url);
+/** The HTTP error status in a player error ("HTTP 403", mediabunny's "Error fetching …: 403 Forbidden"). */
+export const statusOf = (message: string) => Number(/(?:HTTP |: )([45]\d\d)\b/.exec(message)?.[1]) || undefined;
+
+/**
+ * A failed channel, explained. `seen` is an error status the player itself got: that wins over a fresh probe,
+ * which can catch a flaky server (a shared, rate-limited token) on a good moment and blame the format.
+ */
+export async function diagnose(url: string, seen?: number): Promise<Diagnosis> {
+  const { health, status } = seen ? byStatus(seen) : await probe(url);
   switch (health) {
-    case 'refused': return { title: 'Access refused', detail: `The stream answered ${status}: it may be region-locked or need a subscription.` };
+    case 'refused': return { title: 'Access refused', detail: `The stream answered ${status}: it may be region-locked, need a subscription, or be turning viewers away.` };
     case 'offline': return { title: 'Channel offline', detail: `The stream answered ${status}: it isn’t broadcasting at this address anymore.` };
     case 'server': return { title: 'Server problem', detail: `The stream’s server answered ${status}. It may come back later.` };
     case 'drm': return { title: 'Protected channel', detail: 'This channel is encrypted (DRM), which this player can’t decrypt.' };
