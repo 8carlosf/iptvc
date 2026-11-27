@@ -14,6 +14,9 @@ importers:
       '@mediabunny/dts':
         specifier: ^1.66.5
         version: 1.66.5(mediabunny@1.66.5)
+      dashjs:
+        specifier: ^5.3.0
+        version: 5.3.0(@svta/cml-cta@1.0.9(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1))(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1)
       mediabunny:
         specifier: ^1.66.5
         version: 1.66.5
@@ -210,6 +213,68 @@ packages:
       svelte: ^5.46.4
       vite: ^8.0.0-beta.7 || ^8.0.0
 
+  '@svta/cml-608@1.1.0':
+    resolution: {integrity: sha512-r427FE+vTYsgh9wi7lc6gkixFpdBiTSy+fIy4zdwe8+mgOtMiVjP9xHW68z1KcH/WNSGRDzCEunNIsX4tIljTA==}
+    engines: {node: '>=20'}
+
+  '@svta/cml-cmcd@2.8.2':
+    resolution: {integrity: sha512-/safKRbApNeycQBJHdA6EgrPj+6vqsChRLX6oQr1//DKKfoyjed2Pn7oDUNxw17hTN+X02AvvOtKrg7niY4AQw==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@svta/cml-structured-field-values': 1.1.6
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-cmsd@1.1.1':
+    resolution: {integrity: sha512-Om3w7qU33E7i/K3Gd0GOG8njIDP9GD3R3XjqxIGc/ZXFexTVvMK3eQIN9cyVLdJrLR7XLMUIih7Kc1D+tNLl8Q==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@svta/cml-cta': 1.0.9
+      '@svta/cml-structured-field-values': 1.1.6
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-cta@1.0.9':
+    resolution: {integrity: sha512-qEz9dYeHSDQtKiIfDQNWlBQgBsKJZcUojI8JLNhfc4d4IcAmqwwCd7UVXxEiAt7S6hNLQgWBE/YH43ot8x0Fbw==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@svta/cml-structured-field-values': 1.1.6
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-dash@1.0.9':
+    resolution: {integrity: sha512-+ufdUrkKpeNPtxDXA/8b7gXJAR9FnntGVvImgexzrjoIH4j/5QkhPmwjT2fUk/l3bsMGqRkZcFoqKLagT21BVQ==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-id3@1.0.9':
+    resolution: {integrity: sha512-dH902qkWEscl5srsL5pxJjyXMHWV6r3E9Up/thlnGj0M5hc0e+M6VeIFsmLVtZkuwwhugXb39PAkRP1IRRm8Nw==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-request@1.0.21':
+    resolution: {integrity: sha512-OEpyH5F4Buh8fYfaOXtbbWrHY3BG7J5i2euEz5qemj1H8ABVgmHHXnkv+NNSSvJH/0bjoqFbXwUcD2KHUUoaSA==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@svta/cml-cmcd': 2.8.2
+      '@svta/cml-utils': 1.6.1
+      '@svta/cml-xml': 1.2.1
+
+  '@svta/cml-structured-field-values@1.1.6':
+    resolution: {integrity: sha512-+aPvf3Ak9DdJZC+z5/R1A8Swq0AI4uoVD6QV5e8gM9W8im+LuzP69rPh7lrnA7RfANTPhSwd6zxTf/IXyPlY8A==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-utils@1.6.1':
+    resolution: {integrity: sha512-jPKb+it53Pi8rbO8fNX8qpbdE+JfDAeOXF7lcG+uVU5BCcR0wbMTT2VtFdMeVsUN57TFPAurRavE3aEUSzC+zw==}
+    engines: {node: '>=20'}
+
+  '@svta/cml-xml@1.2.1':
+    resolution: {integrity: sha512-zTogQQ6h6Lhzi78MU9pH2NEuCDK2lpWjMsmvQqGoLipozQAkLO7OXgEc4K9KZ1qmwg77DSiiJQo6TNtyT9PbQw==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@svta/cml-utils': 1.6.1
+
   '@tsconfig/svelte@5.0.9':
     resolution: {integrity: sha512-gbtbqsEFq9gFzGmgJMIB3+leXVmkUttoFjzeHsbqN6qFKst40fvxnN9+3Ajdl8VlIGwPevs9LNJ8YUhQgchqaw==}
 
@@ -277,6 +342,13 @@ packages:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
     engines: {node: '>=6'}
 
+  codem-isoboxer@0.3.10:
+    resolution: {integrity: sha512-eNk3TRV+xQMJ1PEj0FQGY8KD4m0GPxT487XJ+Iftm7mVa9WpPFDMWqPt+46buiP5j5Wzqe5oMIhqBcAeKfygSA==}
+
+  dashjs@5.3.0:
+    resolution: {integrity: sha512-2Pe1gl4kUX30RkjmGVywT8Frje0a5reGqmqXDqsD/YC/3EkfN1XFuDoBg1p4gnfaHIDcL2KwD/4iqpCKz8tuwA==}
+    engines: {node: '>=20'}
+
   deepmerge@4.3.1:
     resolution: {integrity: sha512-3sUqbMEc77XqpdNO7FRyRog+eW3ph+GYCbj+rK+uYyRMuwsVy0rMiVtPn+QJlKFvWP/1PYpapqYn0Me2knFn+A==}
     engines: {node: '>=0.10.0'}
@@ -310,6 +382,9 @@ packages:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
 
+  fast-deep-equal@3.1.3:
+    resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
+
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
     engines: {node: '>=12.0.0'}
@@ -324,8 +399,20 @@ packages:
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
 
+  html-entities@2.6.0:
+    resolution: {integrity: sha512-kig+rMn/QOVRvr7c86gQ8lWXq+Hkv6CbAH1hLu+RG338StTpE8Z0b44SDVaqVu7HGKf27frdmUYEs9hTUX/cLQ==}
+
+  immediate@3.0.6:
+    resolution: {integrity: sha512-XXOFtyqDjNDAQxVfYxuF7g9Il/IbWmmlQg2MYKOH8ExIT1qg6xc4zyS3HaEEATgs1btfzxq15ciUiY7gjSXRGQ==}
+
+  imsc@1.1.5:
+    resolution: {integrity: sha512-V8je+CGkcvGhgl2C1GlhqFFiUOIEdwXbXLiu1Fcubvvbo+g9inauqT3l0pNYXGoLPBj3jxtZz9t+wCopMkwadQ==}
+
   is-reference@3.0.3:
     resolution: {integrity: sha512-ixkJoqQvAP88E6wLydLGGqCJsrFUnqoH6HnaczB8XmDH1oaWU+xxdptvikTgaEhtZ53Ky6YXiBuUI2WXLMCwjw==}
+
+  lie@3.1.1:
+    resolution: {integrity: sha512-RiNhHysUjhrDQntfYSfY4MU24coXXdEOgw9WGcKHNeEwffDYbF//u87M1EWaMGzuFoSbqW0C9C6lEEhDOAswfw==}
 
   lightningcss-android-arm64@1.33.0:
     resolution: {integrity: sha512-gEpRTalKdosp4Bb8qWtc2iOgE5SeIHlpS1up9bFq2wAyYhl1UdTObYiHe98zEM9SQvSoqQZ1IQD0JNpg3Ml5pg==}
@@ -401,6 +488,9 @@ packages:
     resolution: {integrity: sha512-WkUDrojuJs0xkgGf2udWxa3yGBRxPtxUkB79i6aCZLRgc7PM8fZe9TosfPDcvEpQZbuFASnHYmRLBLUbmLOIIA==}
     engines: {node: '>= 12.0.0'}
 
+  localforage@1.10.0:
+    resolution: {integrity: sha512-14/H1aX7hzBBmmh7sGPd+AOMkkIrHM3Z1PAyGgZigA1H1p5O5ANnMyWzvpAETtG68/dC4pC0ncy3+PPGzXZHPg==}
+
   locate-character@3.0.0:
     resolution: {integrity: sha512-SW13ws7BjaeJ6p7Q6CO2nchbYEc3X3J6WrmTTDto7yMPqVSZTUyY5Tjbid+Ab8gLnATtygYtiDIJGQRRn2ZOiA==}
 
@@ -432,6 +522,9 @@ packages:
     resolution: {integrity: sha512-5vvB5+W7ePv+p3uqxi+RcW1XAzLW0/hxt3/4X4Lc4qHudzOhmBiBwOY6DRob4WnanAEGvNcLjF+KNOufrUoEQw==}
     engines: {node: '>=12.20.0'}
 
+  path-browserify@1.0.1:
+    resolution: {integrity: sha512-b7uo2UCUOYZcnF/3ID0lulOJi/bafxa1xPe7ZPsammBSpjSWQkjNxlt635YGS2MiR9GjvuXCtz2emr3jbsz98g==}
+
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
@@ -455,6 +548,9 @@ packages:
   sade@1.8.1:
     resolution: {integrity: sha512-xal3CZX1Xlo/k4ApwCFrHVACi9fBqJ7V+mwhBsuf/1IOKbBy098Fex+Wa/5QMubw09pSZ/u8EY8PWgevJsXp1A==}
     engines: {node: '>=6'}
+
+  sax@1.2.1:
+    resolution: {integrity: sha512-8I2a3LovHTOpm7NV5yOyO8IHqgVsfK4+UuySrXU8YXkSRX7k6hCV9b3HrkKCr3nMpgj+0bmocaJJWpvp1oc7ZA==}
 
   source-map-js@1.2.4:
     resolution: {integrity: sha512-J7ZjMvHd9O1fcT/5V09QWaaSl2BbWx3F6O08spde82Namf9UB0GxRVIPiNbVsdKkoizHiSpTodo3vp2bAy91MA==}
@@ -720,6 +816,48 @@ snapshots:
       vite: 8.4.0(@types/node@26.6.11)
       vitefu: 1.1.4(vite@8.4.0(@types/node@26.6.11))
 
+  '@svta/cml-608@1.1.0': {}
+
+  '@svta/cml-cmcd@2.8.2(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1)':
+    dependencies:
+      '@svta/cml-structured-field-values': 1.1.6(@svta/cml-utils@1.6.1)
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-cmsd@1.1.1(@svta/cml-cta@1.0.9(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1))(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1)':
+    dependencies:
+      '@svta/cml-cta': 1.0.9(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1)
+      '@svta/cml-structured-field-values': 1.1.6(@svta/cml-utils@1.6.1)
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-cta@1.0.9(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1)':
+    dependencies:
+      '@svta/cml-structured-field-values': 1.1.6(@svta/cml-utils@1.6.1)
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-dash@1.0.9(@svta/cml-utils@1.6.1)':
+    dependencies:
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-id3@1.0.9(@svta/cml-utils@1.6.1)':
+    dependencies:
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-request@1.0.21(@svta/cml-cmcd@2.8.2(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1)(@svta/cml-xml@1.2.1(@svta/cml-utils@1.6.1))':
+    dependencies:
+      '@svta/cml-cmcd': 2.8.2(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1)
+      '@svta/cml-utils': 1.6.1
+      '@svta/cml-xml': 1.2.1(@svta/cml-utils@1.6.1)
+
+  '@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1)':
+    dependencies:
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-utils@1.6.1': {}
+
+  '@svta/cml-xml@1.2.1(@svta/cml-utils@1.6.1)':
+    dependencies:
+      '@svta/cml-utils': 1.6.1
+
   '@tsconfig/svelte@5.0.9': {}
 
   '@tybys/wasm-util@0.10.5':
@@ -773,6 +911,28 @@ snapshots:
 
   clsx@2.1.1: {}
 
+  codem-isoboxer@0.3.10: {}
+
+  dashjs@5.3.0(@svta/cml-cta@1.0.9(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1))(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1):
+    dependencies:
+      '@svta/cml-608': 1.1.0
+      '@svta/cml-cmcd': 2.8.2(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1)
+      '@svta/cml-cmsd': 1.1.1(@svta/cml-cta@1.0.9(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1))(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1)
+      '@svta/cml-dash': 1.0.9(@svta/cml-utils@1.6.1)
+      '@svta/cml-id3': 1.0.9(@svta/cml-utils@1.6.1)
+      '@svta/cml-request': 1.0.21(@svta/cml-cmcd@2.8.2(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1)(@svta/cml-xml@1.2.1(@svta/cml-utils@1.6.1))
+      '@svta/cml-xml': 1.2.1(@svta/cml-utils@1.6.1)
+      codem-isoboxer: 0.3.10
+      fast-deep-equal: 3.1.3
+      html-entities: 2.6.0
+      imsc: 1.1.5
+      localforage: 1.10.0
+      path-browserify: 1.0.1
+    transitivePeerDependencies:
+      - '@svta/cml-cta'
+      - '@svta/cml-structured-field-values'
+      - '@svta/cml-utils'
+
   deepmerge@4.3.1: {}
 
   detect-libc@2.1.2: {}
@@ -793,6 +953,8 @@ snapshots:
 
   expect-type@1.4.0: {}
 
+  fast-deep-equal@3.1.3: {}
+
   fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:
       picomatch: 4.0.7
@@ -800,9 +962,21 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
+  html-entities@2.6.0: {}
+
+  immediate@3.0.6: {}
+
+  imsc@1.1.5:
+    dependencies:
+      sax: 1.2.1
+
   is-reference@3.0.3:
     dependencies:
       '@types/estree': 1.0.11
+
+  lie@3.1.1:
+    dependencies:
+      immediate: 3.0.6
 
   lightningcss-android-arm64@1.33.0:
     optional: true
@@ -853,6 +1027,10 @@ snapshots:
       lightningcss-win32-arm64-msvc: 1.33.0
       lightningcss-win32-x64-msvc: 1.33.0
 
+  localforage@1.10.0:
+    dependencies:
+      lie: 3.1.1
+
   locate-character@3.0.0: {}
 
   magic-string@0.30.21:
@@ -876,6 +1054,8 @@ snapshots:
     optional: true
 
   obug@3.0.0: {}
+
+  path-browserify@1.0.1: {}
 
   picocolors@1.1.1: {}
 
@@ -914,6 +1094,8 @@ snapshots:
   sade@1.8.1:
     dependencies:
       mri: 1.2.0
+
+  sax@1.2.1: {}
 
   source-map-js@1.2.4: {}
 

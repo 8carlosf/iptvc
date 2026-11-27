@@ -75,17 +75,37 @@ fn dispatch(op: u32, req: &str) -> Result<String, String> {
             let f = fields(req, 2);
             catalog::load(f[0], f[1]).map(|n| n.to_string())
         }
-        // query(kind, category ("" = all), offset, limit, ids ("" = any, else comma list), text) -> {total, items}
+        // query(kind, category ("" = all), country ("" = all), offset, limit, ids ("" = any, else comma list), text)
+        //   -> {total, items}
         1 => {
-            let f = fields(req, 6);
+            let f = fields(req, 7);
             let num = |s: &str| s.parse::<usize>().map_err(|e| e.to_string());
-            let ids: Vec<u64> = f[4].split(',').filter_map(|s| s.parse().ok()).collect();
-            catalog::query(f[0], f[1], num(f[2])?, num(f[3])?, (!f[4].is_empty()).then_some(&ids[..]), f[5])
+            let ids: Vec<u64> = f[5].split(',').filter_map(|s| s.parse().ok()).collect();
+            catalog::query(f[0], f[1], f[2], num(f[3])?, num(f[4])?, (!f[5].is_empty()).then_some(&ids[..]), f[6])
         }
         // epg(now unix seconds, get_simple_data_table json) -> programmes
         2 => {
             let f = fields(req, 2);
             epg::programmes(f[1], f[0].parse().map_err(|_| "bad now")?)
+        }
+        // load_m3u(playlist) -> count (the live list)
+        4 => Ok(catalog::load_m3u(req).to_string()),
+        // categories(kind, country) -> [{id, count}] from the list's groups
+        5 => {
+            let f = fields(req, 2);
+            Ok(catalog::categories(f[0], f[1]))
+        }
+        // load_xmltv(guide) -> programme count
+        6 => epg::load_xmltv(req).map(|n| n.to_string()),
+        // guide(now unix seconds, channel tvg-id) -> programmes, from the XMLTV guide
+        7 => {
+            let f = fields(req, 2);
+            Ok(epg::programmes_for(f[1], f[0].parse().map_err(|_| "bad now")?))
+        }
+        // countries(kind, category) -> [{id, count}]
+        8 => {
+            let f = fields(req, 2);
+            Ok(catalog::countries(f[0], f[1]))
         }
         _ => Err(format!("unknown op {op}")),
     }

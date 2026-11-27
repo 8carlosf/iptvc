@@ -11,6 +11,8 @@ const cases: [string, Route][] = [
   ['#/movies/87751/watch', { tab: 'vod', id: 87751, watch: true }],
   ['#/series/1', { tab: 'series', id: 1 }],
   ['#/series/1/watch/20002', { tab: 'series', id: 1, watch: true, episode: '20002' }],
+  ['#/live/cat/News?country=uk', { tab: 'live', cat: 'News', country: 'uk' }],
+  ['#/live?country=fr&q=jazz', { tab: 'live', country: 'fr', q: 'jazz' }],
 ];
 
 describe('route', () => {

@@ -1,12 +1,14 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { core, type Item, type Kind, type Programme } from './lib/core';
+  import { core, type Facet, type Item, type Kind, type Programme } from './lib/core';
   import { format, parse, type Route } from './lib/route';
-  import { Xtream, type Category, type Episode, type Login, type SeriesInfo } from './lib/xtream';
+  import { M3u } from './lib/m3u';
+  import type { Provider } from './lib/provider';
+  import { Xtream, type Category, type Episode, type SeriesInfo } from './lib/xtream';
   import type { Media } from './Player.svelte';
   import Guide from './Guide.svelte';
   import Icon from './Icon.svelte';
-  import LoginForm from './Login.svelte';
+  import LoginForm, { type Sources } from './Login.svelte';
   import Series from './Series.svelte';
 
   const PAGE = 120;
@@ -16,8 +18,22 @@
     { kind: 'series', label: 'Series', noun: 'series' },
   ];
 
-  let login = $state<Login>(JSON.parse(localStorage.login ?? 'null') ?? { server: '', username: '', password: '' });
-  let xt = $state<Xtream | null>(null);
+  const DEFAULT_PLAYLIST = 'https://iptv-org.github.io/iptv/index.m3u';
+
+  /** What the sign-in form remembers, per source type; never passwords. */
+  function savedSources(): Sources {
+    const saved = JSON.parse(localStorage.sources ?? 'null');
+    const old = JSON.parse(localStorage.login ?? 'null'); // earlier versions kept a password here: drop it
+    localStorage.removeItem('login');
+    return {
+      mode: saved?.mode ?? 'm3u',
+      m3u: { url: saved?.m3u?.url ?? DEFAULT_PLAYLIST, guide: saved?.m3u?.guide ?? '', username: saved?.m3u?.username ?? '' },
+      xtream: { server: saved?.xtream?.server ?? old?.server ?? '', username: saved?.xtream?.username ?? old?.username ?? '' },
+    };
+  }
+  let sources = $state<Sources>(savedSources());
+  let password = $state(''); // for this session only
+  let xt = $state<Provider | null>(null);
   let signingIn = $state(false);
   let loading = $state(false);
   let error = $state('');
@@ -26,6 +42,8 @@
   let cats = $state<Partial<Record<Kind, Category[]>>>({});
   let cat = $state<Partial<Record<Kind, string>>>({});
   let q = $state('');
+  let country = $state(''); // M3U: country filter (code), alongside the category
+  let facet = $state<'cat' | 'country'>('cat'); // which filter the sidebar lists
   let items = $state<Item[]>([]);
   let total = $state(0);
 
@@ -51,9 +69,11 @@
     error = '';
     signingIn = true;
     try {
-      const x = new Xtream(login);
+      localStorage.sources = JSON.stringify(sources);
+      const x: Provider = sources.mode === 'm3u'
+        ? new M3u(sources.m3u.url.trim(), sources.m3u.guide.trim(), sources.m3u.username.trim(), password)
+        : new Xtream({ server: sources.xtream.server, username: sources.xtream.username, password });
       await x.auth();
-      localStorage.login = JSON.stringify(login);
       xt = x;
       await apply(parse(location.hash));
     } catch (e) {
@@ -76,14 +96,16 @@
   async function apply(r: Route) {
     const token = ++applying;
     const stale = () => token !== applying;
+    if (xt && !xt.kinds.includes(r.tab)) r = { tab: xt.kinds[0] }; // e.g. a movie link on a playlist source
     route = r;
     if (!xt) return;
     if (!loaded.has(r.tab)) await load(r.tab);
     if (stale()) return;
     tab = r.tab;
     cat[tab] = r.cat ?? '';
+    country = r.country ?? '';
     q = r.q ?? '';
-    const key = `${tab}|${cat[tab]}|${q}`;
+    const key = `${tab}|${cat[tab]}|${country}|${q}`;
     if (key !== listKey) { listKey = key; search(); }
     const item = r.id !== undefined ? core.query(tab, { ids: [r.id], limit: 1 }).items[0] : undefined;
 
@@ -93,7 +115,7 @@
     if (tab === 'series' && r.id !== undefined) {
       if (showId !== r.id) {
         try {
-          const info = await xt.series(r.id);
+          const info = await xt.series!(r.id);
           if (stale()) return;
           show = info;
           showId = r.id;
@@ -112,10 +134,10 @@
       await guideLoad;
       if (stale()) return;
       media = liveMedia(item, r.at);
-    } else if (tab === 'vod' && item) media = { title: item.name, url: xt.movie(item.id, item.ext) };
+    } else if (tab === 'vod' && item) media = { title: item.name, url: xt.movie!(item.id, item.ext) };
     else if (tab === 'series' && show) {
       const ep = Object.values(show.episodes).flat().find((e) => e.id === r.episode);
-      if (ep) media = { title: ep.title, url: xt.episode(ep.id, ep.container_extension) };
+      if (ep) media = { title: ep.title, url: xt.episode!(ep.id, ep.container_extension) };
     }
     mediaKey = media ? want : '';
   }
@@ -136,7 +158,7 @@
 
   function search(more = false) {
     if (!loaded.has(tab)) return;
-    const r = core.query(tab, { cat: q ? '' : cat[tab], q, offset: more ? items.length : 0, limit: PAGE });
+    const r = core.query(tab, { cat: q ? '' : cat[tab], country: q ? '' : country, q, offset: more ? items.length : 0, limit: PAGE });
     items = more ? [...items, ...r.items] : r.items;
     total = r.total;
     if (!more) scroller?.scrollTo(0, 0);
@@ -149,7 +171,7 @@
     guideLoading = true;
     // By id: `channel` holds Svelte's reactive proxy of `item`, never `item` itself.
     const current = () => channel?.id === item.id;
-    guideLoad = xt!.epg(item.id).then((g) => { if (current()) guide = g; }, () => {})
+    guideLoad = xt!.epg(item).then((g) => { if (current()) guide = g; }, () => {})
       .finally(() => { if (current()) guideLoading = false; });
   }
 
@@ -157,14 +179,30 @@
   function liveMedia(item: Item, from?: number): Media {
     const { id, name, archive } = item;
     const x = xt!;
-    const rewind = archive
-      ? { at: (t: number) => x.timeshift(id, t, (Date.now() / 1000 - t) / 60 + 1), window: archive * 86400 }
+    const rewind = archive && x.timeshift
+      ? { at: (t: number) => x.timeshift!(id, t, (Date.now() / 1000 - t) / 60 + 1), window: archive * 86400 }
       : undefined;
-    return { title: name, url: x.live(id), live: true, rewind, from, guide };
+    return { title: name, url: x.live(item), live: true, rewind, from, guide };
   }
 
   // The list a click came from stays in the URL alongside what was opened.
-  const here = () => ({ tab, cat: route.cat, q: route.q });
+  const here = () => ({ tab, cat: route.cat, country: route.country, q: route.q });
+
+  // Sidebar filters. M3U lists are counted by the core, each narrowed by the other filter; Xtream has its own
+  // category list (and no countries).
+  const m3u = $derived(xt instanceof M3u);
+  const catList = $derived<(Facet & { label: string })[]>(m3u
+    ? core.categories(tab, country).map((c) => ({ ...c, label: c.id }))
+    : (cats[tab] ?? []).map((c) => ({ id: c.category_id, count: 0, label: c.category_name })));
+  const countryList = $derived<Facet[]>(m3u ? core.countries(tab, cat[tab] ?? '') : []);
+  const regions = new Intl.DisplayNames(['en'], { type: 'region' });
+  /** iptv-org writes the United Kingdom as "uk"; ISO says "GB". */
+  const iso = (code: string) => (code === 'uk' ? 'GB' : code.toUpperCase());
+  const countryName = (code: string) => { try { return regions.of(iso(code)) ?? code; } catch { return code.toUpperCase(); } };
+  const flag = (code: string) => String.fromCodePoint(...[...iso(code)].map((c) => 0x1f1a5 + c.charCodeAt(0)));
+  const catLabel = $derived(catList.find((c) => c.id === cat[tab])?.label ?? cat[tab] ?? '');
+  const filterCat = (id: string) => go({ tab, cat: id || undefined, country: route.country });
+  const filterCountry = (code: string) => go({ tab, cat: route.cat, country: code || undefined });
   const open = (it: Item, watch = false) => go({ ...here(), id: it.id, watch: watch || tab === 'vod' });
   const watchChannel = (from?: number) => channel && go({ ...here(), id: channel.id, watch: true, at: from });
   const playEpisode = (ep: Episode) => go({ ...here(), id: showId, watch: true, episode: ep.id });
@@ -183,13 +221,17 @@
   }
 
   // Returning users go straight in; the form shows only if that fails.
-  onMount(() => { if (login.server && login.username && login.password) void connect(); });
+  // Returning users of a playlist without an account go straight in; with a password, the form asks for it.
+  onMount(() => { if (localStorage.sources && sources.mode === 'm3u' && sources.m3u.url && !sources.m3u.username) void connect(); });
 
   function signOut() {
     xt = null;
-    login.password = '';
-    localStorage.login = JSON.stringify(login); // keep server and username for next time
+    password = '';
+    loaded.clear(); // the next source may be a different one
+    cats = {};
   }
+
+  const tabs = $derived(TABS.filter((t) => xt?.kinds.includes(t.kind)));
 
   // Infinite scroll: the next page loads as the end of the list nears.
   $effect(() => {
@@ -210,16 +252,16 @@
 
 <svelte:window onkeydown={key} onpopstate={() => apply(parse(location.hash))} />
 
-{#if !xt && signingIn && !error && localStorage.login}
+{#if !xt && signingIn && !error && localStorage.sources}
   <div class="state full-page"><span class="spinner"></span></div>
 {:else if !xt}
-  <LoginForm bind:login busy={signingIn} {error} onsubmit={connect} />
+  <LoginForm bind:sources bind:password busy={signingIn} {error} onsubmit={connect} />
 {:else}
   <div class="app" class:with-guide={!!channel}>
     <header class="top">
       <div class="brand"><span class="mark"><Icon name="tv" size={18} /></span><span>iptvc</span></div>
       <nav class="tabs" aria-label="Sections">
-        {#each TABS as t}
+        {#each tabs as t}
           <button class:on={tab === t.kind} aria-current={tab === t.kind ? 'page' : undefined} onclick={() => go({ tab: t.kind })}>{t.label}</button>
         {/each}
       </nav>
@@ -231,11 +273,31 @@
       <button class="icon-btn" onclick={signOut} title="Sign out" aria-label="Sign out"><Icon name="logout" size={19} /></button>
     </header>
 
-    <nav class="cats" aria-label="Categories">
-      <button class:on={!cat[tab] && !q} onclick={() => go({ tab })}>All {noun}</button>
-      {#each cats[tab] ?? [] as c (c.category_id)}
-        <button class:on={cat[tab] === c.category_id && !q} onclick={() => go({ tab, cat: c.category_id })}>{c.category_name}</button>
-      {/each}
+    <nav class="cats" aria-label="Filters">
+      {#if countryList.length}
+        <div class="facets" role="tablist">
+          <button role="tab" aria-selected={facet === 'cat'} class:on={facet === 'cat'} onclick={() => (facet = 'cat')}>Categories</button>
+          <button role="tab" aria-selected={facet === 'country'} class:on={facet === 'country'} onclick={() => (facet = 'country')}>Countries</button>
+        </div>
+        <!-- The other filter, when set, stays visible and removable. -->
+        {#if facet === 'cat' && country}<button class="chip-filter" onclick={() => filterCountry('')}>{flag(country)} {countryName(country)} <Icon name="close" size={13} /></button>{/if}
+        {#if facet === 'country' && cat[tab]}<button class="chip-filter" onclick={() => filterCat('')}>{catLabel} <Icon name="close" size={13} /></button>{/if}
+      {/if}
+      {#if facet === 'country' && countryList.length}
+        <button class:on={!country && !q} onclick={() => filterCountry('')}>All countries</button>
+        {#each countryList as c (c.id)}
+          <button class:on={country === c.id && !q} onclick={() => filterCountry(c.id)}>
+            <span class="label">{flag(c.id)} {countryName(c.id)}</span><span class="count">{c.count}</span>
+          </button>
+        {/each}
+      {:else}
+        <button class:on={!cat[tab] && !q} onclick={() => filterCat('')}>All {noun}</button>
+        {#each catList as c (c.id)}
+          <button class:on={cat[tab] === c.id && !q} onclick={() => filterCat(c.id)}>
+            <span class="label">{c.label}</span>{#if c.count}<span class="count">{c.count}</span>{/if}
+          </button>
+        {/each}
+      {/if}
     </nav>
 
     <main bind:this={scroller}>
@@ -246,7 +308,7 @@
         <div class="state"><span class="spinner"></span><p>Loading {noun}…</p></div>
       {:else}
         <div class="heading">
-          <h1>{q ? `Results for “${q}”` : (cats[tab]?.find((c) => c.category_id === cat[tab])?.category_name ?? `All ${noun}`)}</h1>
+          <h1>{q ? `Results for “${q}”` : [catLabel, country && countryName(country)].filter(Boolean).join(' · ') || `All ${noun}`}</h1>
           <span>{total.toLocaleString()}</span>
         </div>
         {#if tab === 'live'}
@@ -327,6 +389,14 @@
     transition: background 0.15s var(--ease), color 0.15s var(--ease); }
   .cats button:hover { background: var(--surface); color: var(--text); }
   .cats .on { background: var(--accent-soft) !important; color: var(--text); font-weight: 500; }
+  .cats button { display: flex; align-items: center; gap: 0.5rem; }
+  .cats .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .cats .count { flex: none; font-size: 0.75rem; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .facets { display: grid; grid-template-columns: 1fr 1fr; gap: 0.2rem; padding: 0.2rem; margin-bottom: 0.5rem; border-radius: 9px; background: var(--surface); }
+  .facets button { justify-content: center; padding: 0.35rem 0.5rem; font-size: 0.85rem; }
+  .facets .on { background: var(--surface-3) !important; }
+  .chip-filter { align-self: flex-start; margin: 0 0 0.5rem; padding: 0.3rem 0.6rem !important; border-radius: 999px !important;
+    background: var(--accent-soft) !important; color: var(--text) !important; font-size: 0.82rem; }
 
   main { overflow: auto; padding: 1.5rem; min-width: 0; }
   .heading { display: flex; align-items: baseline; gap: 0.6rem; margin-bottom: 1rem; }

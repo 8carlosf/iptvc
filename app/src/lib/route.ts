@@ -4,6 +4,8 @@ import type { Kind } from './core';
 export type Route = {
   tab: Kind;
   cat?: string;
+  /** M3U: country code. */
+  country?: string;
   q?: string;
   /** Channel, movie or series id. */
   id?: number;
@@ -21,8 +23,11 @@ export function parse(hash: string): Route {
   const [path, query = ''] = hash.replace(/^#\/?/, '').split('?');
   const [slug, ...rest] = path.split('/').filter(Boolean).map(decodeURIComponent);
   const r: Route = { tab: KIND[slug] ?? 'live' };
-  const q = new URLSearchParams(query).get('q');
+  const params = new URLSearchParams(query);
+  const q = params.get('q');
   if (q) r.q = q;
+  const country = params.get('country');
+  if (country) r.country = country;
   if (rest[0] === 'cat') {
     if (rest[1]) r.cat = rest[1];
     return r;
@@ -47,6 +52,9 @@ export function format(r: Route): string {
       if (r.tab === 'series' && r.episode) parts.push(r.episode);
     }
   } else if (r.cat) parts.push('cat', r.cat);
-  const q = r.q ? `?${new URLSearchParams({ q: r.q })}` : '';
-  return `#/${parts.map((p) => encodeURIComponent(p)).join('/')}${q}`;
+  const params = new URLSearchParams();
+  if (r.country) params.set('country', r.country);
+  if (r.q) params.set('q', r.q);
+  const query = params.size ? `?${params}` : '';
+  return `#/${parts.map((p) => encodeURIComponent(p)).join('/')}${query}`;
 }

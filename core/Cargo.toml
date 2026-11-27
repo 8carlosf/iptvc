@@ -15,6 +15,7 @@ base64 = "0.22"
 unicode-normalization = "0.1"
 symphonia-core = "0.6"
 symphonia-bundle-mp3 = { version = "0.6", default-features = false, features = ["mp1", "mp2", "mp3"] }
+quick-xml = "0.42"
 
 [profile.release]
 opt-level = "s"

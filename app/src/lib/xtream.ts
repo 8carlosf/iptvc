@@ -1,5 +1,6 @@
 // Xtream Codes API: login, categories, stream lists (held by the Rust core), and stream URLs.
-import { core, type Kind } from './core';
+import { core, type Item, type Kind } from './core';
+import type { Provider } from './provider';
 
 export type Login = { server: string; username: string; password: string };
 export type Category = { category_id: string; category_name: string };
@@ -15,7 +16,8 @@ const ACTIONS: Record<Kind, [string, string]> = {
   series: ['get_series_categories', 'get_series'],
 };
 
-export class Xtream {
+export class Xtream implements Provider {
+  readonly kinds: Kind[] = ['live', 'vod', 'series'];
   readonly base: string;
   /** The origin the provider writes into image URLs (server_info), which only `base` actually serves. */
   private upstream = '';
@@ -51,13 +53,13 @@ export class Xtream {
 
   categories = async (kind: Kind): Promise<Category[]> => JSON.parse(await this.get({ action: ACTIONS[kind][0] }));
   load = async (kind: Kind): Promise<number> => core.load(kind, await this.get({ action: ACTIONS[kind][1] }));
-  epg = async (streamId: number) => core.epg(await this.get({ action: 'get_simple_data_table', stream_id: streamId }));
+  epg = async (item: Item) => core.epg(await this.get({ action: 'get_simple_data_table', stream_id: item.id }));
   series = async (id: number): Promise<SeriesInfo> => JSON.parse(await this.get({ action: 'get_series_info', series_id: id }));
 
   image = (url: string) => (this.upstream && url.startsWith(this.upstream) ? this.base + url.slice(this.upstream.length) : url);
 
   private path = (kind: string, rest: string) => `${this.base}/${kind}/${encodeURIComponent(this.login.username)}/${encodeURIComponent(this.login.password)}/${rest}`;
-  live = (id: number) => this.path('live', `${id}.ts`);
+  live = (item: Item) => this.path('live', `${item.id}.ts`);
   movie = (id: number, ext: string) => this.path('movie', `${id}.${ext}`);
   episode = (id: string, ext: string) => this.path('series', `${id}.${ext}`);
   /** Catch-up from unix time `t`, for `minutes`. */

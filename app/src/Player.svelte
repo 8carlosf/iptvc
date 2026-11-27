@@ -31,6 +31,7 @@
   import { remux, streamSource } from './lib/remux';
   import { SoftVideo } from './lib/soft';
   import { grab, near } from './lib/thumbs';
+  import { diagnose } from './lib/diagnose';
   import Icon from './Icon.svelte';
 
   /** `onmove`: live/catch-up position changes (the catch-up start, null at live), for the page's link. */
@@ -41,6 +42,8 @@
   let canvas: HTMLCanvasElement;
   let mode = $state<'loading' | 'native' | 'remux'>('loading');
   let error = $state('');
+  let errorTitle = $state(''); // set when a channel's failure was diagnosed
+  let dash: { destroy(): void } | null = null; // dash.js, while a DASH channel plays
   let reconnecting = $state(false);
   let buffering = $state(true);
   let retries = 0; // consecutive reconnects; reset once playing again
@@ -68,6 +71,7 @@
   let edge = $state(Date.now() / 1000);
   let timer: ReturnType<typeof setInterval>;
   const stream = $derived(!!media.live);
+  const hls = $derived(/\.m3u8(\?|$)/i.test(media.url));
   let pausedLive = $state(false); // the user paused at the live edge: from then on they're behind it
   const atLive = $derived(stream && from === null && !pausedLive);
   // The live window: centred where you last jumped to (null: anchored at now), re-centred only past its edges.
@@ -85,8 +89,10 @@
   let tip = $state<{ x: number; text: string; p?: Programme; img?: string } | null>(null);
 
   /** Grabs a timeline preview at `now` from `frame` unless one is near already (watched before). */
+  // Pixels are only readable where we decode the stream ourselves (remux); a cross-origin <video> playing directly
+  // is "tainted", so drawing it (thumbnails, the deinterlace mirror) would yield nothing.
   function maybeGrab(frame: CanvasImageSource) {
-    if (mode === 'loading' || buffering || near(media.url, now, THUMB_EVERY / 2)) return;
+    if (mode !== 'remux' || buffering || near(media.url, now, THUMB_EVERY / 2)) return;
     void grab(media.url, now, frame);
   }
 
@@ -138,6 +144,7 @@
     abort = new AbortController();
     const { signal } = abort;
     error = '';
+    errorTitle = '';
     buffering = true;
     pausedLive = false;
     void decoder?.then((d) => d.close());
@@ -158,13 +165,15 @@
         return;
       }
       error = e instanceof Error ? e.message : String(e);
+      if (hls) void explain();
     };
     try {
       if (stream) {
         from = media.rewind && at !== null ? Math.floor(at / 60) * 60 : null; // timeshift URLs go by the minute
         onmove?.(from);
         const url = from === null ? media.url : media.rewind!.at(from);
-        ({ soft } = await remux(video, streamSource(url, signal), signal, { onerror, softVideo }));
+        // HLS (where the browser can't play it itself) is read by mediabunny, segment by segment.
+        ({ soft } = await remux(video, hls ? new UrlSource(url) : streamSource(url, signal), signal, { onerror, softVideo }));
       } else {
         const r = await remux(video, new UrlSource(media.url), signal, { start: fileStart + (at ?? 0), seekable: true, onerror, softVideo });
         soft = r.soft;
@@ -193,7 +202,18 @@
     frame();
     timer = setInterval(tick, 250);
     wake();
-    if (!stream && (await route(media.url)) === 'native') {
+    if (/\.mpd(\?|$)/i.test(media.url)) {
+      // DASH: dash.js (loaded only now) drives the same <video>, so the controls work as for any direct stream.
+      mode = 'native';
+      const { MediaPlayer } = await import('dashjs');
+      const player = MediaPlayer().create();
+      player.on('error', () => void explainDash());
+      player.initialize(video, media.url, true);
+      dash = player;
+      return;
+    }
+    // Live HLS plays natively where the browser can (Chrome, Safari); files when they need no conversion.
+    if (stream ? hls && !!video.canPlayType('application/vnd.apple.mpegurl') : (await route(media.url)) === 'native') {
       mode = 'native';
       video.src = media.url;
       video.play().catch(() => {});
@@ -208,6 +228,7 @@
     clearInterval(timer);
     clearTimeout(idleTimer);
     cancelAnimationFrame(raf);
+    dash?.destroy();
     abort.abort();
     void decoder?.then((d) => d.close());
     video?.pause();
@@ -230,8 +251,15 @@
     if (!video.paused && video.readyState >= 3) { retries = 0; reconnecting = false; }
     if (mode === 'native') {
       now = video.currentTime;
-      if (!video.paused && video.readyState >= 2) maybeGrab(video);
       length = Number.isFinite(video.duration) ? video.duration : 0;
+      // Sound but no picture: the browser's own HLS player can't decode this video (HEVC in TS, in Chrome).
+      // Remuxing hands the same video to MSE, which can.
+      if (stream && hls && !video.paused && video.currentTime > 2 && !video.videoWidth) {
+        mode = 'remux';
+        video.removeAttribute('src');
+        void start(null);
+        return;
+      }
       // Chrome-only counter: a file with video but no decodable audio (AC-3/DTS) that we couldn't probe.
       if (video.currentTime > 3 && video.webkitAudioDecodedByteCount === 0 && !error)
         error = 'No sound: this audio format needs the server to allow cross-origin access to movie and series files.';
@@ -262,10 +290,53 @@
 
   function toggle() {
     if (held) { held = false; buffering = false; return; } // a pause while catching up stays paused
+    if (mode === 'native') {
+      pausedLive = stream && !video.paused;
+      return void (video.paused ? video.play() : video.pause());
+    }
     if (!video.paused) { pausedLive = stream && from === null; return video.pause(); }
     // Paused live: with catch-up, carry on from the paused moment; without, rejoin the live edge.
     if (stream && from === null) void start(media.rewind ? now : null);
     else void video.play();
+  }
+
+  function retry() {
+    error = '';
+    errorTitle = '';
+    if (mode !== 'native') return void start(from);
+    video.load();
+    void video.play().catch(() => {});
+  }
+
+  /** DASH failed: encrypted streams (DRM) can't play here at all; anything else is diagnosed as usual. */
+  async function explainDash() {
+    if (error) return;
+    const manifest = await fetch(media.url).then((r) => r.text(), () => '');
+    if (/<ContentProtection/i.test(manifest)) {
+      errorTitle = 'Protected channel';
+      error = 'This channel is encrypted (DRM), which this player can’t decrypt.';
+    } else await explain();
+  }
+
+  /** A channel failed: find out whether it's the channel (offline, refused) or the browser, and say so. */
+  async function explain() {
+    errorTitle = '';
+    error = 'Checking the channel…';
+    const d = await diagnose(media.url);
+    errorTitle = d.title;
+    error = d.detail;
+  }
+
+  function goLive() {
+    if (mode === 'native') {
+      // Native HLS: the newest point the stream offers.
+      if (video.seekable.length) video.currentTime = video.seekable.end(video.seekable.length - 1);
+      pausedLive = false;
+      void video.play();
+      return;
+    }
+    center = null;
+    void start(null);
   }
 
   /** Shows the controls, and hides them again after a pause in pointer movement while playing. */
@@ -298,7 +369,7 @@
   });
   $effect(() => {
     if (screen) screen.deinterlace = deinterlace;
-    if (deinterlace && !soft && screen) return mirror(video, screen);
+    if (deinterlace && !soft && screen && mode === 'remux') return mirror(video, screen);
   });
 </script>
 
@@ -311,12 +382,12 @@
     <video bind:this={video} playsinline onclick={() => !wokeFromIdle && toggle()} ondblclick={toggleFullscreen}
       onwaiting={() => (buffering = true)} onplaying={() => (buffering = false)} oncanplay={() => (buffering = false)}
       onended={() => from !== null && start(null)}
-      onerror={() => mode === 'native' && (error = 'This file can’t be played in the browser.')}></video>
-    <canvas bind:this={canvas} hidden={!deinterlace && !soft} onclick={() => !wokeFromIdle && toggle()} ondblclick={toggleFullscreen}></canvas>
+      onerror={() => mode === 'native' && (stream ? explain() : (error = 'This file can’t be played in the browser.'))}></video>
+    <canvas bind:this={canvas} hidden={mode !== 'remux' || (!deinterlace && !soft)} onclick={() => !wokeFromIdle && toggle()} ondblclick={toggleFullscreen}></canvas>
 
     <div class="center">
       {#if error}
-        <div class="notice"><p>{error}</p><button class="btn" onclick={() => (mode === 'native' ? video.load() : start(from))}>Try again</button></div>
+        <div class="notice">{#if errorTitle}<h2>{errorTitle}</h2>{/if}<p>{error}</p><button class="btn" onclick={retry}>Try again</button></div>
       {:else if reconnecting}
         <div class="notice"><span class="spinner"></span><p>Reconnecting…</p></div>
       {:else if held || (buffering && mode !== 'native') || mode === 'loading'}
@@ -359,19 +430,19 @@
       </div>
       <span class="time">
         {#if stream}
-          {#if !atLive || pending !== null || scrub !== null}{clock(shown)} <span>· {fmt(edge - shown)} behind</span>{/if}
+          {#if mode === 'remux' && (!atLive || pending !== null || scrub !== null)}{clock(shown)} <span>· {fmt(edge - shown)} behind</span>{/if}
         {:else if length}{fmt(shown)} <span>/ {fmt(length)}</span>{/if}
       </span>
       {#if stream}
-        <button class="live" class:on={atLive} disabled={atLive} onclick={() => { center = null; void start(null); }}><span></span>LIVE</button>
+        <button class="live" class:on={atLive} disabled={atLive} onclick={goLive}><span></span>LIVE</button>
       {/if}
       <div class="menu">
         <button class="icon-btn" class:active={settings} onclick={() => (settings = !settings)} aria-label="Settings" aria-expanded={settings}><Icon name="sliders" size={20} /></button>
         {#if settings}
           <div class="popover" role="dialog" aria-label="Playback settings">
-            <label class="switch">
-              <span>Deinterlace<small>Smooths combing on 1080i broadcasts</small></span>
-              <input type="checkbox" bind:checked={deinterlace} onchange={() => (autoDeinterlace = false)} />
+            <label class="switch" class:off={mode !== 'remux'}>
+              <span>Deinterlace<small>{mode === 'remux' ? 'Smooths combing on 1080i broadcasts' : 'Not available for this stream'}</small></span>
+              <input type="checkbox" bind:checked={deinterlace} disabled={mode !== 'remux'} onchange={() => (autoDeinterlace = false)} />
             </label>
             <dl>
               <dt>Decoder</dt><dd>{soft ? 'FFmpeg (WebAssembly)' : mode === 'native' ? 'Browser, direct' : 'Browser, remuxed'}</dd>
@@ -398,6 +469,8 @@
   .bigplay { display: grid; place-items: center; width: 5rem; height: 5rem; padding-left: 0.3rem; border-radius: 50%;
     background: rgb(255 255 255 / 0.14); backdrop-filter: blur(10px); transition: transform 0.2s var(--ease), background 0.2s var(--ease); }
   .bigplay:hover { transform: scale(1.06); background: rgb(255 255 255 / 0.22); }
+  .notice h2 { font-size: 1.05rem; font-weight: 600; }
+  .notice p { color: rgb(255 255 255 / 0.75); }
   .notice { display: grid; justify-items: center; gap: 0.9rem; max-width: 26rem; padding: 1.25rem 1.5rem; border-radius: 14px;
     background: rgb(20 22 27 / 0.85); backdrop-filter: blur(10px); text-align: center; }
 
@@ -460,6 +533,8 @@
   .switch input::after { content: ''; position: absolute; top: 3px; left: 3px; width: calc(1.35rem - 6px); aspect-ratio: 1; border-radius: 50%; background: #fff; transition: translate 0.2s var(--ease); }
   .switch input:checked { background: var(--accent); }
   .switch input:checked::after { translate: 0.95rem 0; }
+  .switch.off { cursor: default; opacity: 0.55; }
+  .switch.off input { cursor: default; }
   dl { display: grid; grid-template-columns: auto 1fr; gap: 0.3rem 1rem; margin: 0; padding-top: 0.75rem; border-top: 1px solid rgb(255 255 255 / 0.08); font-size: 0.82rem; }
   dt { color: var(--muted); }
   dd { margin: 0; text-align: right; }

@@ -1,11 +1,17 @@
 # iptvc
 
-A browser-only IPTV player (PWA) for Xtream Codes servers: live TV, movies, series and catch-up.
+A browser-only IPTV player (PWA). Sources:
+- **M3U playlist** (the default; prefilled with [iptv-org](https://github.com/iptv-org/iptv)'s public one), with an
+  optional account (sent as `username`/`password` query parameters) and XMLTV guide: live channels, filtered by
+  `group-title` and by the country code in `tvg-id`, guides matched by `tvg-id`.
+- **Xtream Codes**: live TV, movies, series and catch-up.
+
+The sign-in form remembers each source's addresses separately; passwords are never stored.
 Svelte 5 + Vite, a Rust core compiled to wasm, and mediabunny for demuxing and muxing.
 
 ```sh
-mise run dev     # http://localhost:5173 — sign in with your server URL, username, password
-mise run test    # Rust tests + svelte-check
+mise run dev     # http://localhost:5173
+mise run test    # Rust tests, svelte-check, unit tests
 mise run build   # app/dist, a static PWA
 ```
 
@@ -13,7 +19,8 @@ mise run build   # app/dist, a static PWA
 
 | Source | Path |
 |---|---|
-| Movie/episode the browser plays as-is (MP4 + H.264/AAC) | `<video src>` directly; needs no CORS |
+| Movie/episode the browser plays as-is (MP4 + H.264/AAC), and HLS where the browser has it (Chrome, Safari) | `<video src>` directly; needs no CORS |
+| DASH (`.mpd`) | dash.js, loaded only then; DRM-encrypted channels can't play and say so |
 | Live TV, catch-up (MPEG-TS) and files with AC-3/DTS/MP2 audio | **remux**: mediabunny demuxes, video packets are copied untouched into fragmented MP4, audio is decoded in wasm and re-encoded to AAC, and the result goes to `<video>` via Media Source Extensions |
 
 Copying the video, rather than decoding it with WebCodecs, matters: Chrome's WebCodecs refuses interlaced H.264,
@@ -27,13 +34,18 @@ only the audio and `<video>` stays the clock.
 The Rust core (`core/`, string ABI, no bindgen) does:
 - **MP2 audio decoding** (symphonia), which DVB channels carry and browsers can't decode;
 - **H.264 SPS/slice-header parsing**, to spot PAFF streams and interlaced ones;
-- **catalog search** over the stream lists (held in wasm; accent- and superscript-folded: "news fhd" finds "News ᶠᴴᴰ");
+- **M3U and XMLTV parsing** (quick-xml), and **catalog search** over the stream lists (held in wasm; accent- and superscript-folded: "news fhd" finds "News ᶠᴴᴰ");
 - **EPG decoding** (base64 titles, catch-up flags).
 
 AC-3/E-AC-3 and DTS come from mediabunny's FFmpeg-in-wasm extensions. Interlaced streams are deinterlaced
 (linear blend) by a WebGL mirror of the video, switched on automatically from the stream's SPS.
 
 ## Server requirements
+
+- **M3U and XMLTV URLs must allow cross-origin reads** (`Access-Control-Allow-Origin`), since the page fetches them.
+  Channels themselves play through `<video>` and need none, unless they go through the remux path (HLS the browser
+  can't decode itself, e.g. HEVC, falls back to it). Channels that need a custom User-Agent or Referer can't play in
+  a browser.
 
 - **https**: an https page can't fetch `http://` streams, so use the server's https address
   (e.g. behind Traefik, which also brings HTTP/2), or serve the app over plain http.
