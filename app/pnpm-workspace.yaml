@@ -1,0 +1,5 @@
+minimumReleaseAgeExclude:
+  - '@mediabunny/ac3@1.66.5'
+  - '@mediabunny/dts@1.66.5'
+  - mediabunny@1.66.5
+  - vite@8.4.0

@@ -1,0 +1,42 @@
+[tools]
+emsdk = "7.0.1"
+node = "latest"
+pnpm = "latest"
+rust = { version = "stable", targets = "wasm32-unknown-unknown" }
+
+# `mise run <task>` from anywhere under iptvc/.
+
+[tasks.wasm]
+description = "Build core/pkg/iptvc.wasm (skipped when the crate is unchanged)"
+run = "core/build.sh"
+sources = ["core/Cargo.toml", "core/Cargo.lock", "core/src/**/*.rs", "core/build.sh"]
+outputs = ["core/pkg/iptvc.wasm"]
+
+[tasks.install]
+description = "Install the app's node packages"
+dir = "app"
+run = "pnpm install"
+sources = ["package.json", "pnpm-lock.yaml"]
+outputs = ["node_modules/.modules.yaml"]
+
+[tasks.dev]
+description = "App dev server"
+depends = ["wasm", "install"]
+dir = "app"
+run = "pnpm dev"
+
+[tasks.build]
+description = "App production build (app/dist)"
+depends = ["wasm", "install"]
+dir = "app"
+run = "pnpm build"
+
+[tasks.test]
+description = "Rust and app tests"
+depends = ["wasm", "install"]
+run = ["cd core && cargo test -q", "cd app && pnpm check && pnpm test"]
+
+[tasks.decoder]
+description = "Build app/public/libav: FFmpeg's H.264 + MPEG-2 video decoders as wasm (libav.js), for PAFF 1080i"
+run = "decoder/build.sh"
+outputs = ["app/public/libav/libav-iptvc.mjs"]
