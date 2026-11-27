@@ -1,6 +1,6 @@
 # iptvc
 
-A browser-only IPTV player (PWA). Sources:
+A browser-only IPTV player (PWA), live at **https://8carlosf.github.io/iptvc/**. Sources:
 - **M3U playlist** (the default; prefilled with [iptv-org](https://github.com/iptv-org/iptv)'s public one), with an
   optional account (sent as `username`/`password` query parameters) and XMLTV guide: live channels, filtered by
   `group-title` and by the country code in `tvg-id`, guides matched by `tvg-id`.
