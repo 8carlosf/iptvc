@@ -76,12 +76,13 @@ fn dispatch(op: u32, req: &str) -> Result<String, String> {
             catalog::load(f[0], f[1]).map(|n| n.to_string())
         }
         // query(kind, category ("" = all), country ("" = all), excluded notes (comma list), offset, limit,
-        //   ids ("" = any, else comma list), text) -> {total, items}
+        //   ids ("" = any, else comma list), skipped ids (comma list), text) -> {total, items}
         1 => {
-            let f = fields(req, 8);
+            let f = fields(req, 9);
             let num = |s: &str| s.parse::<usize>().map_err(|e| e.to_string());
-            let ids: Vec<u64> = f[6].split(',').filter_map(|s| s.parse().ok()).collect();
-            catalog::query(f[0], f[1], f[2], f[3], num(f[4])?, num(f[5])?, (!f[6].is_empty()).then_some(&ids[..]), f[7])
+            let list = |s: &str| s.split(',').filter_map(|x| x.parse().ok()).collect::<Vec<u64>>();
+            let ids = list(f[6]);
+            catalog::query(f[0], f[1], f[2], f[3], num(f[4])?, num(f[5])?, (!f[6].is_empty()).then_some(&ids[..]), &list(f[7]), f[8])
         }
         // epg(now unix seconds, get_simple_data_table json) -> programmes
         2 => {

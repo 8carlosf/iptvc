@@ -46,9 +46,10 @@ function call(op: number, ...fields: (string | number)[]): string {
 
 export const core = {
   load: (kind: Kind, json: string) => Number(call(0, kind, json)),
-  /** `exclude`: channels with any of these notes are left out. */
-  query: (kind: Kind, o: { cat?: string; country?: string; exclude?: string[]; offset?: number; limit?: number; ids?: number[]; q?: string }) =>
-    JSON.parse(call(1, kind, o.cat ?? '', o.country ?? '', (o.exclude ?? []).join(','), o.offset ?? 0, o.limit ?? 120, (o.ids ?? []).join(','), o.q ?? '')) as { total: number; items: Item[] },
+  /** `exclude`: channels with any of these notes are left out; `skip`: these ids are. */
+  query: (kind: Kind, o: { cat?: string; country?: string; exclude?: string[]; offset?: number; limit?: number; ids?: number[]; skip?: number[]; q?: string }) =>
+    JSON.parse(call(1, kind, o.cat ?? '', o.country ?? '', (o.exclude ?? []).join(','), o.offset ?? 0, o.limit ?? 120,
+      (o.ids ?? []).join(','), (o.skip ?? []).join(','), o.q ?? '')) as { total: number; items: Item[] },
   epg: (json: string, now = Date.now() / 1000) => JSON.parse(call(2, Math.floor(now), json)) as Programme[],
   /** Loads an M3U playlist as the live list; returns how many channels it has. */
   loadM3u: (text: string) => Number(call(4, text)),

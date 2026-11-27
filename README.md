@@ -6,6 +6,11 @@ A browser-only IPTV player (PWA). Sources:
   `group-title` and by the country code in `tvg-id`, guides matched by `tvg-id`.
 - **Xtream Codes**: live TV, movies, series and catch-up.
 
+Public playlists get channel checks: free ones from the playlist itself (needs a Referer or a TV app's User-Agent,
+http-only, region-locked, part-time), and a **Check** button for lists of up to 300 channels that asks each stream
+whether it answers (6 at a time, one per host, results kept for an hour). Providers that count connections never
+get bulk checks.
+
 The sign-in form remembers each source's addresses separately; passwords are never stored.
 Svelte 5 + Vite, a Rust core compiled to wasm, and mediabunny for demuxing and muxing.
 

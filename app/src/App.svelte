@@ -6,6 +6,8 @@
   import type { Provider } from './lib/provider';
   import { Xtream, type Category, type Episode, type SeriesInfo } from './lib/xtream';
   import type { Media } from './Player.svelte';
+  import { CHECK_MAX, checkAll, FAILED, results } from './lib/health';
+  import type { Health } from './lib/diagnose';
   import Guide from './Guide.svelte';
   import Icon from './Icon.svelte';
   import LoginForm, { type Sources } from './Login.svelte';
@@ -56,6 +58,34 @@
     'part-time': { label: 'Part-time', title: 'Not on air around the clock' },
   };
   const shownNotes = (it: Item) => it.notes.filter((n) => n !== 'insecure' || location.protocol === 'https:');
+
+  // Channel checks: public playlists only (a provider counts each check as a stream), small lists only.
+  const HEALTH: Record<Health, { label: string; title: string; tone: 'good' | 'warn' | '' }> = {
+    ok: { label: 'Online', title: 'Its stream answered when checked', tone: 'good' },
+    refused: { label: 'Refused', title: 'Its stream refused access (403): region-locked or subscription', tone: 'warn' },
+    offline: { label: 'Offline', title: 'Its stream is gone (404)', tone: 'warn' },
+    server: { label: 'Server error', title: 'Its server answered with an error', tone: 'warn' },
+    unavailable: { label: 'Unavailable', title: 'Its address didn’t answer with a stream', tone: 'warn' },
+    drm: { label: 'DRM', title: 'Encrypted: this player can’t decrypt it', tone: 'warn' },
+    timeout: { label: 'No answer', title: 'Its server didn’t answer in time', tone: 'warn' },
+    blocked: { label: 'Couldn’t verify', title: 'Its server doesn’t let pages check it; it may still play', tone: '' },
+  };
+  let checking = $state<{ done: number; total: number } | null>(null);
+  let checkAbort: AbortController | null = null;
+  const canCheck = $derived(xt instanceof M3u && tab === 'live' && !sources.m3u.username);
+  /** Channels a check found down: hidden along with the playlist's own warnings. */
+  const failedIds = () => (hideUnlikely ? [...results.values()].filter((r) => FAILED.has(r.health)).map((r) => r.id) : []);
+  const healthOf = (it: Item) => results.get(xt!.live(it))?.health;
+
+  async function runCheck() {
+    if (checking) { checkAbort?.abort(); checking = null; return; }
+    const list = core.query(tab, { cat: q ? '' : cat[tab], country: q ? '' : country, exclude: unlikely, skip: failedIds(), q, limit: CHECK_MAX }).items;
+    checkAbort = new AbortController();
+    checking = { done: 0, total: list.length };
+    await checkAll(list.map((it) => ({ id: it.id, url: xt!.live(it) })), checkAbort.signal, (done) => checking && (checking = { ...checking, done }));
+    checking = null;
+    if (hideUnlikely) { listKey = ''; void apply(route); }
+  }
   let items = $state<Item[]>([]);
   let total = $state(0);
 
@@ -170,7 +200,7 @@
 
   function search(more = false) {
     if (!loaded.has(tab)) return;
-    const r = core.query(tab, { cat: q ? '' : cat[tab], country: q ? '' : country, exclude: unlikely, q, offset: more ? items.length : 0, limit: PAGE });
+    const r = core.query(tab, { cat: q ? '' : cat[tab], country: q ? '' : country, exclude: unlikely, skip: failedIds(), q, offset: more ? items.length : 0, limit: PAGE });
     items = more ? [...items, ...r.items] : r.items;
     total = r.total;
     if (!more) scroller?.scrollTo(0, 0);
@@ -243,11 +273,31 @@
   // Returning users of a playlist without an account go straight in; with a password, the form asks for it.
   onMount(() => { if (localStorage.sources && sources.mode === 'm3u' && sources.m3u.url && !sources.m3u.username) void connect(); });
 
+  /** Leaves the source: nothing of it may linger (ids mean different channels in another source, too). */
   function signOut() {
+    checkAbort?.abort();
+    checking = null;
+    applying++; // drop any navigation still in flight
     xt = null;
     password = '';
-    loaded.clear(); // the next source may be a different one
+    loaded.clear();
     cats = {};
+    cat = {};
+    country = '';
+    q = '';
+    items = [];
+    total = 0;
+    listKey = '';
+    channel = null;
+    guide = [];
+    guideLoading = false;
+    guideLoad = Promise.resolve();
+    show = null;
+    showId = 0;
+    media = null;
+    mediaKey = '';
+    route = { tab: 'live' };
+    history.replaceState(null, '', format(route));
   }
 
   const tabs = $derived(TABS.filter((t) => xt?.kinds.includes(t.kind)));
@@ -334,6 +384,12 @@
         <div class="heading">
           <h1>{q ? `Results for “${q}”` : [catLabel, country && countryName(country)].filter(Boolean).join(' · ') || `All ${noun}`}</h1>
           <span>{total.toLocaleString()}</span>
+          {#if canCheck}
+            <button class="check" onclick={runCheck} disabled={!checking && (total > CHECK_MAX || !total)}
+              title={checking ? 'Stop checking' : total > CHECK_MAX ? `Narrow the list to ${CHECK_MAX} channels or fewer to check them` : 'Ask each channel’s server whether its stream answers (results last an hour)'}>
+              {#if checking}<span class="spinner tiny"></span> Checking {checking.done}/{checking.total} · Stop{:else}Check {total > CHECK_MAX ? '' : `${total} `}channels{/if}
+            </button>
+          {/if}
         </div>
         {#if tab === 'live'}
           <ul class="channels">
@@ -343,8 +399,11 @@
                   <span class="logo">{#if it.icon}<img src={xt.image(it.icon)} alt="" loading="lazy" onerror={(e) => (e.currentTarget as HTMLImageElement).remove()} />{/if}</span>
                   <span class="name">
                     <span class="title">{it.name}</span>
-                    {#if shownNotes(it).length}
-                      <span class="notes">{#each shownNotes(it) as n}<span class="note" class:warn={NOTES[n]?.warn} title={NOTES[n]?.title}>{NOTES[n]?.label ?? n}</span>{/each}</span>
+                    {#if shownNotes(it).length || healthOf(it)}
+                      <span class="notes">
+                        {#if healthOf(it)}{@const h = HEALTH[healthOf(it)!]}<span class="note {h.tone}" title={h.title}>{h.label}</span>{/if}
+                        {#each shownNotes(it) as n}<span class="note" class:warn={NOTES[n]?.warn} title={NOTES[n]?.title}>{NOTES[n]?.label ?? n}</span>{/each}
+                      </span>
                     {/if}
                   </span>
                   {#if it.archive}<span class="chip" title="Catch-up: {it.archive} days"><Icon name="history" size={13} />{it.archive}d</span>{/if}
@@ -452,6 +511,12 @@
   .notes { display: flex; flex-wrap: wrap; gap: 0.25rem; }
   .note { padding: 0 0.35rem; border-radius: 4px; font-size: 0.7rem; color: var(--faint); background: var(--surface-2); }
   .note.warn { color: #f0b46c; background: rgb(240 180 108 / 0.12); }
+  .note.good { color: #7fd1a0; background: rgb(127 209 160 / 0.12); }
+  .heading .check { margin-left: auto; display: inline-flex; align-items: center; gap: 0.4rem; height: 2rem; padding: 0 0.8rem;
+    border-radius: 8px; background: var(--surface-2); color: var(--text); font-size: 0.85rem; font-weight: 500; }
+  .heading .check:hover:not(:disabled) { background: var(--surface-3); }
+  .heading .check:disabled { color: var(--faint); cursor: default; }
+  .spinner.tiny { width: 0.85rem; height: 0.85rem; border-width: 2px; }
   .toggle { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem 0.7rem; font-size: 0.85rem; color: var(--muted); cursor: pointer; }
   .toggle input { accent-color: var(--accent); }
   .chip { flex: none; display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.1rem 0.4rem; border-radius: 6px; font-size: 0.75rem;

@@ -21,6 +21,8 @@
   const THUMB_EVERY = 60;
   /** A channel that hasn't started playing by then is given up on and checked (servers that never answer hang). */
   const START_DEADLINE = 15_000;
+  /** The browser's own HLS player sometimes stalls without an error (e.g. on field-coded video): ours takes over. */
+  const NATIVE_DEADLINE = 8_000;
   /** Controls hide after this long without pointer movement, while playing. */
   const IDLE_MS = 2500;
 </script>
@@ -47,7 +49,7 @@
   let errorTitle = $state(''); // set when a channel's failure was diagnosed
   let dash: { destroy(): void } | null = null; // dash.js, while a DASH channel plays
   let openedAt = Date.now(); // when the current stream was asked for
-  let started = false; // it has played at least a moment
+  let started = $state(false); // it has played at least a moment
   let reconnecting = $state(false);
   let buffering = $state(true);
   let retries = 0; // consecutive reconnects; reset once playing again
@@ -162,8 +164,9 @@
     };
     const onerror = (e: unknown) => {
       if (signal.aborted) return;
-      // Live and catch-up connections drop; pick up again (catch-up where it was) before giving up.
-      if (stream && retries++ < 5) {
+      // Connections drop mid-play; pick up again (catch-up where it was) before giving up. A stream that never
+      // started isn't retried: it's explained.
+      if (stream && started && retries++ < 5) {
         error = '';
         reconnecting = true;
         const at = from === null ? null : now;
@@ -213,7 +216,7 @@
       mode = 'native';
       const { MediaPlayer } = await import('dashjs');
       const player = MediaPlayer().create();
-      player.on('error', () => void explainDash());
+      player.on('error', () => void (error || explain()));
       player.initialize(video, media.url, true);
       dash = player;
       return;
@@ -244,6 +247,9 @@
 
   async function tick() {
     if (!video.paused && video.readyState >= 3 && video.currentTime > 0) started = true;
+    // Never started in the browser's own HLS player: hand the stream to ours (which has its own deadline).
+    if (!started && !error && mode === 'native' && stream && hls && !dash && !ownTried && Date.now() - openedAt > NATIVE_DEADLINE)
+      return void ownPipeline();
     // Never started: stop waiting on a silent server and say what's wrong.
     if (!started && !error && !reconnecting && mode !== 'loading' && Date.now() - openedAt > START_DEADLINE) {
       abort.abort();
@@ -271,13 +277,7 @@
       now = video.currentTime;
       length = Number.isFinite(video.duration) ? video.duration : 0;
       // Sound but no picture: the browser's own HLS player can't decode this video (HEVC in TS, in Chrome).
-      // Remuxing hands the same video to MSE, which can.
-      if (stream && hls && !video.paused && video.currentTime > 2 && !video.videoWidth) {
-        mode = 'remux';
-        video.removeAttribute('src');
-        void start(null);
-        return;
-      }
+      if (stream && hls && !video.paused && video.currentTime > 2 && !video.videoWidth) return void ownPipeline();
       // Chrome-only counter: a file with video but no decodable audio (AC-3/DTS) that we couldn't probe.
       if (video.currentTime > 3 && video.webkitAudioDecodedByteCount === 0 && !error)
         error = 'No sound: this audio format needs the server to allow cross-origin access to movie and series files.';
@@ -318,6 +318,19 @@
     else void video.play();
   }
 
+  let ownTried = false;
+  /**
+   * The browser's own HLS player gave up (a playlist served with the wrong type, a codec it lacks): try once more
+   * with ours, which reads the playlist itself and hands the video to MSE. Only if that fails is the channel checked.
+   */
+  function ownPipeline() {
+    if (ownTried) return void explain();
+    ownTried = true;
+    mode = 'remux';
+    video.removeAttribute('src');
+    void start(null);
+  }
+
   function retry() {
     error = '';
     errorTitle = '';
@@ -327,16 +340,6 @@
     if (!video.getAttribute('src') && !dash) video.src = media.url; // dropped by the start deadline
     video.load();
     void video.play().catch(() => {});
-  }
-
-  /** DASH failed: encrypted streams (DRM) can't play here at all; anything else is diagnosed as usual. */
-  async function explainDash() {
-    if (error) return;
-    const manifest = await fetch(media.url).then((r) => r.text(), () => '');
-    if (/<ContentProtection/i.test(manifest)) {
-      errorTitle = 'Protected channel';
-      error = 'This channel is encrypted (DRM), which this player can’t decrypt.';
-    } else await explain();
   }
 
   /** A channel failed: find out whether it's the channel (offline, refused) or the browser, and say so. */
@@ -403,7 +406,7 @@
     <video bind:this={video} playsinline onclick={() => !wokeFromIdle && toggle()} ondblclick={toggleFullscreen}
       onwaiting={() => (buffering = true)} onplaying={() => (buffering = false)} oncanplay={() => (buffering = false)}
       onended={() => from !== null && start(null)}
-      onerror={() => mode === 'native' && (stream ? explain() : (error = 'This file can’t be played in the browser.'))}></video>
+      onerror={() => mode === 'native' && (stream ? (hls && !dash ? ownPipeline() : explain()) : (error = 'This file can’t be played in the browser.'))}></video>
     <canvas bind:this={canvas} hidden={mode !== 'remux' || (!deinterlace && !soft)} onclick={() => !wokeFromIdle && toggle()} ondblclick={toggleFullscreen}></canvas>
 
     <div class="center">
@@ -411,7 +414,7 @@
         <div class="notice">{#if errorTitle}<h2>{errorTitle}</h2>{/if}<p>{error}</p><button class="btn" onclick={retry}>Try again</button></div>
       {:else if reconnecting}
         <div class="notice"><span class="spinner"></span><p>Reconnecting…</p></div>
-      {:else if held || (buffering && mode !== 'native') || mode === 'loading'}
+      {:else if held || buffering || mode === 'loading' || (stream && !started)}
         <span class="spinner big"></span>
       {:else if !playing}
         <button class="bigplay" onclick={toggle} aria-label="Play"><Icon name="play" size={34} /></button>

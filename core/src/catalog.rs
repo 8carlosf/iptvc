@@ -101,7 +101,7 @@ fn allowed(i: &Item, exclude: &str) -> bool {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn query(kind: &str, cat: &str, country: &str, exclude: &str, offset: usize, limit: usize, ids: Option<&[u64]>, q: &str) -> Result<String, String> {
+pub fn query(kind: &str, cat: &str, country: &str, exclude: &str, offset: usize, limit: usize, ids: Option<&[u64]>, skip: &[u64], q: &str) -> Result<String, String> {
     let words: Vec<String> = fold(q).split_whitespace().map(str::to_string).collect();
     LISTS.with(|l| {
         let l = l.borrow();
@@ -109,7 +109,7 @@ pub fn query(kind: &str, cat: &str, country: &str, exclude: &str, offset: usize,
         let hits: Vec<&Item> = all
             .iter()
             .filter(|i| in_cat(i, cat) && in_country(i, country) && allowed(i, exclude))
-            .filter(|i| ids.is_none_or(|ids| ids.contains(&i.id)))
+            .filter(|i| ids.is_none_or(|ids| ids.contains(&i.id)) && !skip.contains(&i.id))
             .filter(|i| words.iter().all(|w| i.key.contains(w.as_str())))
             .collect();
         let page: Vec<&Item> = hits.iter().skip(offset).take(limit).copied().collect();
@@ -225,14 +225,16 @@ mod tests {
             {"name":"Café Música","stream_id":"5","category_id":2,"tv_archive":0}
         ]"#;
         assert_eq!(load("live", json), Ok(2));
-        let r: Value = serde_json::from_str(&query("live", "", "", "", 0, 10, None, "musica").unwrap()).unwrap();
+        let r: Value = serde_json::from_str(&query("live", "", "", "", 0, 10, None, &[], "musica").unwrap()).unwrap();
         assert_eq!(r["total"], 1);
         assert_eq!(r["items"][0]["id"], 5);
         assert_eq!(r["items"][0]["cat"], "2");
-        let r: Value = serde_json::from_str(&query("live", "1", "", "", 0, 10, None, "news fhd").unwrap()).unwrap();
+        let r: Value = serde_json::from_str(&query("live", "1", "", "", 0, 10, None, &[], "news fhd").unwrap()).unwrap();
         assert_eq!(r["items"][0]["archive"], 3);
-        let r: Value = serde_json::from_str(&query("live", "", "", "", 0, 10, Some(&[5]), "").unwrap()).unwrap();
+        let r: Value = serde_json::from_str(&query("live", "", "", "", 0, 10, Some(&[5]), &[], "").unwrap()).unwrap();
         assert_eq!(r["total"], 1);
+        let r: Value = serde_json::from_str(&query("live", "", "", "", 0, 10, None, &[5], "").unwrap()).unwrap();
+        assert_eq!((r["total"].clone(), r["items"][0]["id"].clone()), (1.into(), 2.into()), "skipped ids are left out");
     }
 
     #[test]
@@ -240,7 +242,7 @@ mod tests {
         let m3u = "#EXTM3U\n#EXTINF:-1 tvg-id=\"news.example@HD\" tvg-logo=\"https://l/n.png\" group-title=\"News;General\",News, Live (1080p)\n\
                    #EXTVLCOPT:http-user-agent=x\nhttps://s/news.m3u8\n#EXTINF:-1 tvg-id=\"Music.FR@SD\" group-title=\"Music;General\",Café Música\nhttps://s/m.m3u8\n";
         assert_eq!(load_m3u(m3u), 2);
-        let r: Value = serde_json::from_str(&query("live", "General", "", "", 0, 10, None, "").unwrap()).unwrap();
+        let r: Value = serde_json::from_str(&query("live", "General", "", "", 0, 10, None, &[], "").unwrap()).unwrap();
         assert_eq!(r["items"][0]["name"], "News, Live (1080p)", "comma in the title");
         assert_eq!(r["items"][0]["url"], "https://s/news.m3u8");
         assert_eq!(r["items"][0]["ext"], "news.example@HD");
@@ -251,7 +253,7 @@ mod tests {
         assert_eq!(facet(categories("live", "fr", "")), serde_json::json!([{ "id": "General", "count": 1 }, { "id": "Music", "count": 1 }]));
         assert_eq!(facet(countries("live", "News", "")), serde_json::json!([]));
         assert_eq!(facet(countries("live", "", "")), serde_json::json!([{ "id": "fr", "count": 1 }]));
-        let r: Value = serde_json::from_str(&query("live", "General", "fr", "", 0, 10, None, "").unwrap()).unwrap();
+        let r: Value = serde_json::from_str(&query("live", "General", "fr", "", 0, 10, None, &[], "").unwrap()).unwrap();
         assert_eq!(r["total"], 1, "category and country combine");
     }
 
@@ -262,13 +264,13 @@ mod tests {
             #EXTINF:-1,Box Agent [Geo-blocked]\n#EXTVLCOPT:http-user-agent=otg/1.5.1 (AppleTv)\nhttp://s/b.m3u8\n\
             #EXTINF:-1 http-referrer=\"https://site.example/\",Needs Referrer [Not 24/7]\nhttps://s/c.m3u8\n";
         load_m3u(m3u);
-        let r: Value = serde_json::from_str(&query("live", "", "", "", 0, 10, None, "").unwrap()).unwrap();
+        let r: Value = serde_json::from_str(&query("live", "", "", "", 0, 10, None, &[], "").unwrap()).unwrap();
         let notes = |i: usize| r["items"][i]["notes"].as_array().unwrap().iter().map(|n| n.as_str().unwrap()).collect::<Vec<_>>();
         assert!(notes(0).is_empty(), "a browser-like agent is what the browser sends");
         assert_eq!(notes(1), ["agent", "insecure", "geo"]);
         assert_eq!(r["items"][1]["name"], "Box Agent", "tags move from the name to notes");
         assert_eq!(notes(2), ["referrer", "part-time"]);
-        let r: Value = serde_json::from_str(&query("live", "", "", "referrer,agent,geo", 0, 10, None, "").unwrap()).unwrap();
+        let r: Value = serde_json::from_str(&query("live", "", "", "referrer,agent,geo", 0, 10, None, &[], "").unwrap()).unwrap();
         assert_eq!(r["total"], 1, "excluded notes leave just the browser-agent channel");
     }
 }
