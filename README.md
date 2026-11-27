@@ -14,6 +14,13 @@ get bulk checks.
 The sign-in form remembers each source's addresses separately; passwords are never stored.
 Svelte 5 + Vite, a Rust core compiled to wasm, and mediabunny for demuxing and muxing.
 
+> **Disclaimer:** iptvc is only a player. It ships no channels, hosts no streams and has no ties to any provider.
+> You bring your own playlists and accounts and are responsible for having the right to watch what they carry.
+> The iptv-org playlist it suggests is a third-party list of publicly available streams.
+
+**http vs https:** the hosted copy (GitHub Pages) is https-only, and browsers block an https page from loading
+`http://` playlists, providers or streams. Use https sources there, or run it locally over http.
+
 ```sh
 mise run dev     # http://localhost:5173
 mise run test    # Rust tests, svelte-check, unit tests
@@ -32,7 +39,7 @@ Copying the video, rather than decoding it with WebCodecs, matters: Chrome's Web
 while its `<video>` path decodes MBAFF 1080i fine. Mid-stream joins drop open-GOP leading pictures.
 
 **PAFF 1080i** (each field its own picture, common on broadcast HD channels) decodes in no Chrome path. Those
-streams go to FFmpeg's H.264 decoder compiled to wasm (libav.js, `mise run decoder`, ~1.2 MB, loaded only when
+streams go to FFmpeg's H.264 decoder compiled to wasm (libav.js, prebuilt in `app/public/libav/`, ~1.2 MB, loaded only when
 needed; about 6× real time for 1080i on one core). Its frames are drawn on a WebGL canvas, while MSE carries
 only the audio and `<video>` stays the clock.
 
@@ -69,5 +76,11 @@ AC-3/E-AC-3 and DTS come from mediabunny's FFmpeg-in-wasm extensions. Interlaced
 
 ## Setup
 
-`mise install`, then `mise run decoder` once (downloads and builds FFmpeg with emsdk; output goes to
-`app/public/libav/`, gitignored), then `mise run dev`.
+`mise install`, then `mise run dev`. The FFmpeg decoder is committed prebuilt in `app/public/libav/`;
+`mise run decoder` rebuilds it (downloads FFmpeg via libav.js and compiles it with emsdk), only needed to change it.
+
+Pushes to `main` deploy to GitHub Pages (`.github/workflows/pages.yml`).
+
+## License
+
+MIT (`LICENSE`), except `app/public/libav/` (libav.js + FFmpeg, LGPL 2.1+; sources and rebuild steps in `LICENSE`).
