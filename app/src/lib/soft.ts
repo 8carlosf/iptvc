@@ -38,9 +38,18 @@ export class SoftVideo {
     return new SoftVideo(lib, await lib.ff_init_decoder('h264'), clock);
   }
 
-  /** Whether decoding trails the clock at `t` (the picture would lag the sound). */
+  /** Whether decoding trails the clock at `t` past the point `decode` drops frames (the picture would lag the sound). */
   behind(t: number) {
-    return this.latest < t - 0.2;
+    return this.latest < t - 0.05;
+  }
+
+  /**
+   * Whether decoding leads the clock at `t` enough to resume after `behind`: resuming at the same point would
+   * stall again at once, with every frame dropped as late in between (the picture frozen, the sound playing on).
+   * shortcut: a file whose last frames sit under 0.3 s past `t` while held never resumes; track end-of-stream if that shows up.
+   */
+  ahead(t: number) {
+    return this.latest >= t + 0.3;
   }
 
   /** Decodes one access unit (a frame or a single field, as the stream carries them). */

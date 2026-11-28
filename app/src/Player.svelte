@@ -265,9 +265,8 @@
     // (Not while hidden or resyncing after it: then video is skipped on purpose and sound must play on.)
     if (soft && decoder && !document.hidden && (!video.paused || held)) {
       const d = await decoder;
-      const behind = !d.resyncing && d.behind(video.currentTime);
-      if (behind && !held) { held = true; buffering = true; video.pause(); }
-      else if (!behind && held) { held = false; buffering = false; void video.play(); }
+      if (!held && !d.resyncing && d.behind(video.currentTime)) { held = true; buffering = true; video.pause(); }
+      else if (held && (d.resyncing || d.ahead(video.currentTime))) { held = false; buffering = false; void video.play(); }
     }
     playing = !video.paused || held;
     if (pending !== null && !video.paused && !buffering) pending = null;
